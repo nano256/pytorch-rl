@@ -1780,18 +1780,23 @@ class MultiOneHotDiscreteTensorSpec(OneHotDiscreteTensorSpec):
             else:
                 val = torch.as_tensor(val)
 
+    def to_numpy(self, val: torch.Tensor, safe: bool = True) -> np.ndarray:
+        if safe:
+            if not isinstance(val, torch.Tensor):
+                raise NotImplementedError
+            self.assert_is_in(val)
+        else:
+            val = val.reshape(-1)
         x = []
-        for v, space in zip(val.unbind(-1), self.space):
-            if not (v < space.n).all():
-                raise RuntimeError(
-                    f"value {v} is greater than the allowed max {space.n}"
-                )
+        index = 0
+        for space in self.space:
             x.append(
-                super(MultiOneHotDiscreteTensorSpec, self).encode(
-                    v, space, ignore_device=ignore_device
+                super(MultiOneHotDiscreteTensorSpec, self).to_numpy(
+                    val[index : index + space.n], False
                 )
             )
-        return torch.cat(x, -1)
+            index += space.n
+        return np.array(x)
 
     def _split(self, val: torch.Tensor) -> Optional[torch.Tensor]:
         split_sizes = [space.n for space in self.space]
@@ -2735,7 +2740,7 @@ class CompositeSpec(TensorSpec):
                 self._specs[_key].type_check(value[_key], _key)
 
     def is_in(self, val: Union[dict, TensorDictBase]) -> bool:
-        for (key, item) in self._specs.items():
+        for key, item in self._specs.items():
             if item is None:
                 continue
             if not item.is_in(val.get(key)):
